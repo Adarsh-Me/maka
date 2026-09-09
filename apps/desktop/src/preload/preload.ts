@@ -3628,6 +3628,7 @@ const makaBridge = {
       kind: 'completed' | 'errored' | 'waiting';
       title?: string;
       body?: string;
+      hostId?: string;
     }): Promise<void> {
       return invokeWhenReady('notifications:runEnded', payload);
     },
