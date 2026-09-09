@@ -3452,6 +3452,7 @@ const makaBridge = {
       kind: 'completed' | 'errored';
       title?: string;
       body?: string;
+      hostId?: string;
     }): Promise<void> {
       return ipcRenderer.invoke('notifications:runEnded', payload);
     },
