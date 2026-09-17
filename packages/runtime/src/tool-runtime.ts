@@ -71,11 +71,7 @@ import type {
   UserQuestionResponse,
   UserQuestionResult,
 } from '@maka/core/user-question';
-import {
-  buildToolCallArgs,
-  buildToolCallCommonFields,
-  snapshotToolArgs,
-} from './tool-call-snapshot.js';
+import { buildToolCallArgs, snapshotToolArgs } from './tool-call-snapshot.js';
 import type { SessionHeader } from '@maka/core/session';
 import type { ToolInvocationRecord } from '@maka/core/usage-stats/types';
 import { redactSecrets } from '@maka/core/redaction';
@@ -1117,7 +1113,6 @@ export class ToolRuntime {
     });
     const permissionArgs = callArgs.permissionArgs;
     const persistedArgs = callArgs.persistedArgs;
-    const modelFacingArgs = callArgs.modelFacingArgs;
     const permissionArgsError = callArgs.permissionArgsError;
     const now = this.input.now();
     const trace = this.input.getRunTrace?.() ?? null;
@@ -1176,25 +1171,20 @@ export class ToolRuntime {
       this.input.runtimeCommitSink && invocationId
         ? buildToolOperationId({ invocationId, providerToolCallId: toolUseId })
         : undefined;
-    const callCommonFieldsInput = {
+    const callEventFacts = {
+      type: 'tool_start' as const,
       turnId,
       ts: now,
       toolUseId,
       toolName: tool.name,
       ...activityIdentity,
-      activityKind: tool.activityKind,
-      displayName: tool.displayName,
-      persistedArgs,
-      providerOptions: ctx.providerOptions,
-      stepId,
-    };
-    const callEventFacts = {
-      type: 'tool_start' as const,
-      toolUseId,
-      // One recipe, two invocations: each output receives its own args and
-      // providerOptions clones, so a consumer mutating one record can never
-      // reach into the other.
-      ...buildToolCallCommonFields(callCommonFieldsInput),
+      ...(tool.activityKind ? { activityKind: tool.activityKind } : {}),
+      args: structuredClone(persistedArgs),
+      ...(ctx.providerOptions !== undefined
+        ? { providerOptions: structuredClone(ctx.providerOptions) }
+        : {}),
+      ...(tool.displayName ? { displayName: tool.displayName } : {}),
+      ...(stepId !== undefined ? { stepId } : {}),
     };
     let callEvent: ToolStartEvent | undefined;
     const buildCallEvent = (lane: 'dispatch' | 'preflight'): ToolStartEvent => {

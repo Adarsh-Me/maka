@@ -19,8 +19,7 @@
 
 /**
  * The call-data boundary for one tool execution: the argument views a call
- * produces and the common fields its `tool_start` event and persisted
- * `tool_call` message share.
+ * produces.
  *
  * Extracted from `executeTool()` so the ownership of each rule is named
  * instead of living inline in a thousand-line method. This module owns
@@ -29,7 +28,6 @@
  */
 
 import { computerUseModelCallArgs } from '@maka/core/computer-use';
-import type { ToolActivityKind } from '@maka/core/events';
 
 /** The recursively frozen, cycle-rejecting argument snapshot. */
 export function snapshotToolArgs(value: unknown): unknown {
@@ -147,21 +145,22 @@ export interface ToolCallArgsInput {
 }
 
 /**
- * The four argument views of one tool call. Each has one owner and one job:
+ * The three argument views of one tool call. Each has one owner and one job:
  *
  *  - `executionArgs` — canonical execution input. Consumers receive private
  *    mutable clones; the view itself stays frozen.
  *  - `permissionArgs` — the tool's permission-oriented projection, also read
  *    by downstream policy/signature logic.
- *  - `persistedArgs` — what the `tool_start` event, the persisted `tool_call`
- *    message and the durable call data record.
- *  - `modelFacingArgs` — what the model reads back as its own call.
+ *  - `persistedArgs` — what the `tool_start` event and the durable call data
+ *    record. Persistence and the model replay share this one canonical
+ *    tool-dialect projection: the transcript message and the `function_call`
+ *    record the model reads back are derived from the `tool_start` event, so
+ *    there is no separate model-facing record to keep in sync.
  */
 export interface ToolCallArgs {
   readonly executionArgs: unknown;
   readonly permissionArgs: unknown;
   readonly persistedArgs: unknown;
-  readonly modelFacingArgs: unknown;
 }
 
 export interface ToolCallArgsAndProjectionError extends ToolCallArgs {
@@ -174,12 +173,12 @@ export interface ToolCallArgsAndProjectionError extends ToolCallArgs {
 
 /**
  * The named argument-view construction operation: validation, permission
- * projection, and the persisted/model-facing views, in the order and with the
- * guards the inline region in `executeTool()` established.
+ * projection, and the persisted view, in the order and with the guards the
+ * inline region in `executeTool()` established.
  *
- * The args written into the `tool_start` event, the persisted `tool_call`
- * message and the durable ledger are the record of the call the model reads
- * back on its next turn (`model-history.ts` replays `event.content.args`).
+ * The args written into the `tool_start` event and the durable ledger are the
+ * record of the call the model reads back on its next turn
+ * (`model-history.ts` replays `event.content.args`).
  *
  * Computer Use used the host's approval summary there. That projection exists
  * to decide and display a permission: it renames `window_id` to `windowId`,
@@ -196,13 +195,6 @@ export interface ToolCallArgsAndProjectionError extends ToolCallArgs {
  * changes what is written down. `computerUseModelCallArgs` keeps the same
  * privacy rule — screen-derived and user-typed values are reduced to a shape
  * — and speaks the tool's own argument names.
- *
- * The model-facing view is the same projection as the audit record, since
- * `computerUseModelCallArgs` became what both are written with. It was
- * spelled out twice, which meant running it twice per call and leaving two
- * expressions to drift apart. The two names stay because the roles are
- * different — one is what the host records, one is what the model reads — and
- * a divergence would go here.
  */
 export async function buildToolCallArgs(
   input: ToolCallArgsInput,
@@ -236,75 +228,5 @@ export async function buildToolCallArgs(
     permissionArgs,
     permissionArgsError,
     persistedArgs,
-    modelFacingArgs: persistedArgs,
-  };
-}
-
-/**
- * Identity facts every tool activity record carries. Mirrors the private
- * `ToolActivityIdentity` in `@maka/core/events`, which is not exported.
- */
-export interface ToolActivityIdentityFields {
-  origin?: 'provider' | 'code_mode';
-  modelVisibility?: 'visible' | 'hidden';
-  parentToolCallId?: string;
-  parentOperationId?: string;
-}
-
-/** Input to {@link buildToolCallCommonFields}. */
-export interface ToolCallCommonFieldsInput extends ToolActivityIdentityFields {
-  turnId: string;
-  ts: number;
-  /**
-   * The call id. It is NOT emitted into the common fields: the event carries
-   * it as `toolUseId`, the message as `id`, and the persisted message schema
-   * rejects unknown keys — each record names it at its own site.
-   */
-  toolUseId: string;
-  toolName: string;
-  activityKind?: ToolActivityKind | undefined;
-  displayName?: string | undefined;
-  persistedArgs: unknown;
-  providerOptions?: Record<string, unknown> | undefined;
-  stepId?: string | undefined;
-}
-
-/** The fields both call records share, with privately owned copies. */
-export interface ToolCallCommonFields extends ToolActivityIdentityFields {
-  turnId: string;
-  ts: number;
-  toolName: string;
-  activityKind?: ToolActivityKind | undefined;
-  displayName?: string | undefined;
-  args: unknown;
-  providerOptions?: Record<string, unknown> | undefined;
-  stepId?: string | undefined;
-}
-
-/**
- * The one recipe for the fields both call records share, replacing the two
- * handwritten ones in `executeTool()`. Each invocation allocates its own
- * `args` and `providerOptions` clones — the event and the message are
- * independently owned outputs, and sharing one mutable args object across
- * them would break the isolation the duplicated recipes guaranteed.
- */
-export function buildToolCallCommonFields(input: ToolCallCommonFieldsInput): ToolCallCommonFields {
-  return {
-    turnId: input.turnId,
-    ts: input.ts,
-    toolName: input.toolName,
-    ...(input.origin !== undefined ? { origin: input.origin } : {}),
-    ...(input.modelVisibility !== undefined ? { modelVisibility: input.modelVisibility } : {}),
-    ...(input.parentToolCallId !== undefined ? { parentToolCallId: input.parentToolCallId } : {}),
-    ...(input.parentOperationId !== undefined
-      ? { parentOperationId: input.parentOperationId }
-      : {}),
-    ...(input.activityKind !== undefined ? { activityKind: input.activityKind } : {}),
-    ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-    args: structuredClone(input.persistedArgs),
-    ...(input.providerOptions !== undefined
-      ? { providerOptions: structuredClone(input.providerOptions) }
-      : {}),
-    ...(input.stepId !== undefined ? { stepId: input.stepId } : {}),
   };
 }
