@@ -111,6 +111,24 @@ test('cancels settlement while transcript open is pending', async () => {
   }
 });
 
+test('an unopened transcript still fails settlement by default', async () => {
+  await assert.rejects(
+    readSettledMessagesFrom(
+      {
+        transcripts: {
+          readTurn: async () => [],
+          open: async (_sessionId, _handler, registerCancellation) =>
+            new Promise<never>((_resolve, reject) => {
+              registerCancellation?.(() => reject(new Error('open cancelled')));
+            }),
+        },
+      },
+      JSON.stringify(['host-1', 'session-1']),
+    ),
+    /timed out while opening/,
+  );
+});
+
 test('reads one Host-owned Turn outside the bounded transcript tail', async () => {
   const sessionKey = JSON.stringify(['host-1', 'session-1']);
   const turnB: StoredMessage[] = [

@@ -23,6 +23,9 @@ import { describe, it } from 'node:test';
 import type { StoredMessage } from '@maka/core/session';
 import { createAppShellRevisionActions } from '../../renderer/app-shell-revision-actions.js';
 
+const SESSION_1 = JSON.stringify(['host-1', 'session-1']);
+const SESSION_2 = JSON.stringify(['host-1', 'session-2']);
+
 function userMessage(turnId: string, text: string, extra: Record<string, unknown> = {}): StoredMessage {
   return {
     id: `msg-${turnId}`,
@@ -34,13 +37,21 @@ function userMessage(turnId: string, text: string, extra: Record<string, unknown
   } as StoredMessage;
 }
 
-function createActions(input: { messages: StoredMessage[] }) {
+function createActions(input: { messages: StoredMessage[]; failRefresh?: boolean }) {
   const drafts: unknown[] = [];
+  const errors: string[] = [];
+  const infos: string[] = [];
   let composerText = '';
+  let selectionRevision = 0;
+  const activeIdRef: { current: string | undefined } = { current: SESSION_1 };
   const revisionDraftRef: { current: unknown } = { current: null };
   const actions = createAppShellRevisionActions({
     uiLocale: 'en' as never,
-    activeIdRef: { current: 'session-1' },
+    activeIdRef,
+    captureSelection: () => {
+      const revision = selectionRevision;
+      return () => selectionRevision === revision;
+    },
     composerRef: {
       current: {
         getText: () => composerText,
@@ -56,21 +67,42 @@ function createActions(input: { messages: StoredMessage[] }) {
     },
     messages: input.messages,
     hasPendingAttachments: () => false,
-    openSessionInChat: () => {},
-    refreshMessages: async () => true,
-    refreshSessions: async () => [],
-    setMessages: () => {},
+    openSessionInChat: (sessionId: string) => {
+      selectionRevision += 1;
+      activeIdRef.current = sessionId;
+    },
+    refreshSessions: async () => {
+      if (input.failRefresh) throw new Error('Host lost the Session');
+      return [];
+    },
     commitRevisionDraft: (draft: unknown) => {
       revisionDraftRef.current = draft;
       drafts.push(draft);
     },
     revisionDraftRef,
     toastApi: {
-      info: () => {},
-      error: () => {},
+      info: (title: string) => infos.push(title),
+      error: (title: string) => errors.push(title),
     },
   } as never);
-  return Object.assign(actions, { drafts, composerState: { get text(): string { return composerText; } } });
+  return Object.assign(actions, {
+    drafts,
+    errors,
+    infos,
+    activeIdRef,
+    composerState: { get text(): string { return composerText; } },
+  });
+}
+
+async function withWindowMaka(maka: unknown, run: () => Promise<void>): Promise<void> {
+  const target = globalThis as { window?: unknown };
+  const previous = target.window;
+  target.window = { maka };
+  try {
+    await run();
+  } finally {
+    target.window = previous;
+  }
 }
 
 describe('app-shell revision actions with structured context (#5109)', () => {
@@ -118,5 +150,77 @@ describe('app-shell revision actions with structured context (#5109)', () => {
     h.beginEditUserMessage('turn-1');
 
     assert.equal(h.drafts.at(-1), undefined, 'attachment-bearing sources stay explicitly rejected');
+  });
+});
+
+describe('prepareRevisionSend transcript settlement', () => {
+  it('prepares the revision without opening another transcript consumer', async () => {
+    let abandoned = 0;
+    let opened = 0;
+    await withWindowMaka(
+      {
+        sessions: {
+          reviseBeforeTurn: async () => ({ id: SESSION_2 }),
+          abandonSessionCopy: async () => {
+            abandoned += 1;
+          },
+        },
+        transcripts: {
+          open: async () => {
+            opened += 1;
+            return new Promise<never>(() => {});
+          },
+          readTurn: async () => [],
+        },
+      },
+      async () => {
+        const h = createActions({ messages: [userMessage('turn-1', 'original')] });
+        h.beginEditUserMessage('turn-1');
+        assert.equal(await h.prepareRevisionSend('edited'), true);
+        assert.equal(opened, 0, 'the send must not wait on a second transcript open');
+        assert.equal(abandoned, 0);
+        assert.equal(h.activeIdRef.current, SESSION_2);
+        assert.deepEqual(h.errors, []);
+        assert.equal(
+          (h.drafts.at(-1) as { draftSessionId?: string }).draftSessionId,
+          SESSION_2,
+        );
+      },
+    );
+  });
+
+  it('surfaces a failed preparation instead of swallowing it behind rollback', async () => {
+    let abandoned = 0;
+    let opened = 0;
+    await withWindowMaka(
+      {
+        sessions: {
+          reviseBeforeTurn: async () => ({ id: SESSION_2 }),
+          abandonSessionCopy: async () => {
+            abandoned += 1;
+          },
+        },
+        transcripts: {
+          open: async () => {
+            opened += 1;
+            return new Promise<never>(() => {});
+          },
+          readTurn: async () => [],
+        },
+      },
+      async () => {
+        const h = createActions({
+          messages: [userMessage('turn-1', 'original')],
+          failRefresh: true,
+        });
+        h.beginEditUserMessage('turn-1');
+        assert.equal(await h.prepareRevisionSend('edited'), false);
+        assert.equal(opened, 0);
+        assert.equal(h.errors.length, 1, 'the failure must reach the user before rollback navigates away');
+        assert.equal(abandoned, 1);
+        assert.equal(h.activeIdRef.current, SESSION_1);
+        assert.equal(h.composerState.text, 'edited');
+      },
+    );
   });
 });
