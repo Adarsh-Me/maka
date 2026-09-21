@@ -78,6 +78,7 @@ import {
   createTriggerSearchSource,
   fileTransferContainsFiles,
   isChatInputComposing,
+  mentionMatchRank,
   mentionQueryMatches,
   selectedSkillIds,
   slashCommandQuery,
@@ -103,6 +104,7 @@ import {
   ChatComposerInput,
   IconButton,
   Lightbox,
+  placeCaretAtEnd,
   Token,
   Tooltip,
   useChatPasteAsToken,
@@ -193,6 +195,11 @@ type ComposerMentionSuggestion = {
  */
 function skillTokenValue(id: string): string {
   return `/skill:${id}`;
+}
+
+/** What a `/` command is named by, for `mentionMatchRank`: not its description. */
+function commandPrimaryText(command: ComposerSlashCommandOption): string {
+  return `${command.id} ${command.name} ${(command.keywords ?? []).join(' ')}`;
 }
 
 /**
@@ -672,12 +679,7 @@ export const Composer = forwardRef<
       return;
     }
     caretPendingRef.current = false;
-    const selection = document.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(editable);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    placeCaretAtEnd(editable);
   }
   function focusInput() {
     inputHandleRef.current?.focus();
@@ -1033,6 +1035,9 @@ export const Composer = forwardRef<
       const commandQuery = slashCommandQuery(textBeforeCaret, textAfterCaret, rawQuery);
       const query = skillMentionQuery(rawQuery);
       const selectedSkills = selectedSkillIds(textPort.getValue(), rawQuery);
+      // Ranked, then catalog order: a candidate whose own id/name answers the
+      // query leads the ones only their description mentions (mentionMatchRank).
+      // `Array.prototype.sort` is stable, so equal ranks keep the catalog order.
       const commandItems = commandQuery === null
         ? []
         : (source.slashCommands ?? [])
@@ -1041,6 +1046,10 @@ export const Composer = forwardRef<
                 commandQuery,
                 `${command.id} ${command.name} ${command.description ?? ''} ${(command.keywords ?? []).join(' ')}`,
               ),
+            )
+            .sort((left, right) =>
+              mentionMatchRank(commandQuery, commandPrimaryText(left)) -
+              mentionMatchRank(commandQuery, commandPrimaryText(right)),
             )
             .map((command) => ({
               id: `command:${command.id}`,
@@ -1055,6 +1064,10 @@ export const Composer = forwardRef<
         .filter((skill) => !selectedSkills.has(skill.id.toLowerCase()))
         .filter((skill) =>
           mentionQueryMatches(query, `${skill.id} ${skill.name} ${skill.description ?? ''}`),
+        )
+        .sort((left, right) =>
+          mentionMatchRank(query, `${left.id} ${left.name}`) -
+          mentionMatchRank(query, `${right.id} ${right.name}`),
         )
         .map((skill) => ({
           id: `skill:${skill.id}`,
