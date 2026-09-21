@@ -117,28 +117,6 @@ export async function waitForInvocableSkills(
 }
 
 /**
- * Wait for Runtime's projection to stop offering a Skill.
- *
- * A Skill is toggled through the raw bridge here rather than the Skills page, so
- * nothing re-fetches the composer's `/` source on its own. Pressing Enter before
- * Runtime has dropped the Skill lets the send resolve it and succeed, and the
- * rejection the journey expects never renders — the composer keeps offering a
- * Skill that is already disabled.
- */
-export async function waitForSkillNotInvocable(
-  page: Page,
-  absentIds: readonly string[],
-): Promise<void> {
-  await expect
-    .poll(async () =>
-      page.evaluate(async () =>
-        (await window.maka.skills.listInvocable(undefined)).map((skill) => skill.id),
-      ),
-    )
-    .not.toEqual(expect.arrayContaining(absentIds));
-}
-
-/**
  * Pre-seed a real-looking connection into the throwaway workspace so onboarding
  * clears and the composer is enabled. Actual sessions still run on the fake
  * backend (BackendRegistry override in main); this only satisfies the UI
@@ -507,6 +485,12 @@ export async function withE2eWindow(
       rendererLogs.push(`[pageerror] ${error.stack ?? error.message}`);
       if (rendererLogs.length > 30) rendererLogs.shift();
     });
+    const watchCrash = (crashed: Page) => crashed.on('crash', () => {
+      rendererLogs.push(`[crash] ${crashed.url()}`);
+      if (rendererLogs.length > 30) rendererLogs.shift();
+    });
+    for (const existing of app.context().pages()) watchCrash(existing);
+    app.context().on('page', watchCrash);
     if (tracePath) {
       await mkdir(path.dirname(tracePath), { recursive: true });
       await app.context().tracing.start({ snapshots: true });
@@ -533,6 +517,11 @@ export async function withE2eWindow(
         env: buildFixtureEnv(userDataDir, homeDir, { scenario: e2eFixtureScenario, locale, platform, showWindow: visibleWindow }),
       });
       const restored = await app.firstWindow();
+      restored.on('crash', () => {
+        rendererLogs.push(`[crash] ${restored.url()}`);
+        if (rendererLogs.length > 30) rendererLogs.shift();
+      });
+      app.context().on('page', watchCrash);
       await restored.waitForSelector(readinessSelector, { timeout: readinessTimeoutMs });
       return restored;
     } });
