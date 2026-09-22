@@ -167,6 +167,7 @@ import {
 } from './execution-model-authority.js';
 import { HostExecutionInspectCoordinator } from './execution-inspect-coordinator.js';
 import { HostExternalSessionCoordinator } from './external-session-coordinator.js';
+import { boundedFailureDiagnostic } from './failure-diagnostic.js';
 import { HostSessionBundleCoordinator } from './session-bundle-coordinator.js';
 import { HostGoalCoordinator } from './goal-coordinator.js';
 import { HostGoalExecutionCoordinator } from './goal-execution-coordinator.js';
@@ -1509,6 +1510,12 @@ export async function createExecutionRuntimeHostComposition(
     };
     clientCapabilities = new HostClientCapabilityCoordinator({
       activation: runtimePolicyActivation,
+      isSessionRetired: async (sessionId) => {
+        const state = await stores.sessionStore.probeSessionRemoval(sessionId);
+        return (
+          state.kind === 'removed' || (state.kind === 'present' && state.record.header.isArchived)
+        );
+      },
       onModelToolsChanged: registerBackendInvalidation,
       interactions,
       grants: stores.interactionStore,
@@ -2730,8 +2737,15 @@ export async function createExecutionRuntimeHostComposition(
                 try {
                   await clientBoundRecovery;
                 } catch (error) {
+                  // The registration mutation has already committed. Returning a
+                  // failure now would make the Client discard its new registration
+                  // identity and mistake the old registration's release for
+                  // authoritative Session retirement. Drain the unhealthy Host, but
+                  // acknowledge the committed mutation so reconnect can republish it.
+                  console.error(
+                    `[runtime-host] post-commit Client Capability recovery failed: ${boundedFailureDiagnostic(error)}`,
+                  );
                   context.requestDrain();
-                  throw error;
                 }
               }
               return outcome;
