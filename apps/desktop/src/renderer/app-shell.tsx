@@ -150,7 +150,6 @@ import { useAppShellProjectContext } from './use-project-context';
 import {
   createAppShellSessionDisplayBatch,
   createAppShellSessionEventHandlers,
-  resolveRunEndedHostId,
 } from './app-shell-session-events';
 import { createAppShellE2eFixtureActions } from './app-shell-e2e-fixture';
 import { createAppShellChatActions } from './app-shell-chat-actions';
@@ -1724,21 +1723,9 @@ function AppShellContent({
         setPetCompletionNonce((current) => current + 1);
       // The live reply text is usually handed to the transcript before
       // `complete` arrives; the Host commits the row's reply preview first.
-      // The banner belongs to this session's host: only that host can
-      // authorize its content, so carry its identity to main (#4981).
-      // Best-effort: swallow any failure so a missed banner never surfaces
-      // as an unhandled promise rejection.
-      const hostId = resolveRunEndedHostId(sessionId);
-      refreshChangedSession(sessionId)
-        .then((session) =>
-          window.maka.notifications.runEnded({
-            kind,
-            title: session?.name,
-            body: body ?? session?.lastMessagePreview,
-            ...(hostId ? { hostId } : {}),
-          }),
-        )
-        .catch(() => undefined);
+      // Main resolves the banner authority from the session id (#4981), and
+      // the bridge absorbs main-side failures, so no call-site catch is used.
+      void refreshChangedSession(sessionId).then((session) => window.maka.notifications.runEnded({ kind, sessionId, title: session?.name, body: body ?? session?.lastMessagePreview }));
     },
   });
 

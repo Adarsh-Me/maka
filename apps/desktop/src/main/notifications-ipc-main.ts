@@ -24,6 +24,7 @@ import type { DesktopLocaleAuthority } from './desktop-locale-authority.js';
 import {
   isRunNotificationKind,
   resolveNotificationContent,
+  resolveNotificationHostId,
   resolveNotificationIncognito,
   shouldRaiseRunNotification,
 } from './notifications-policy.js';
@@ -60,7 +61,7 @@ interface NotificationsIpcDeps {
 export function registerNotificationsIpc(deps: NotificationsIpcDeps): void {
   const target = deps.ipcMain ?? ipcMain;
   target.handle('notifications:runEnded', async (_event, payload: unknown): Promise<void> => {
-    const raw = (payload ?? {}) as { kind?: unknown; title?: unknown; body?: unknown; hostId?: unknown };
+    const raw = (payload ?? {}) as { kind?: unknown; title?: unknown; body?: unknown; sessionId?: unknown };
     if (!isRunNotificationKind(raw.kind)) return;
 
     const supported = Notification.isSupported();
@@ -69,7 +70,7 @@ export function registerNotificationsIpc(deps: NotificationsIpcDeps): void {
     const settings = await deps.settingsStore.get();
     // The banner belongs to one host: only that host can authorize its
     // content. A missing source stays unknown and suppresses (#4981).
-    const sourceHostId = typeof raw.hostId === 'string' && raw.hostId ? raw.hostId : undefined;
+    const sourceHostId = resolveNotificationHostId(raw.sessionId);
     const incognito = await resolveNotificationIncognito(deps.privacyAuthority, sourceHostId);
     const gate = {
       enabled: settings.notifications.runComplete,

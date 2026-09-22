@@ -18,6 +18,7 @@
  */
 
 import type { UiCatalog, UiLocale } from '@maka/core/ui-locale';
+import { parseDesktopSessionKey } from '../shared/runtime-host-identity.js';
 import type { RuntimeHostDesktopTargetState } from './runtime-host-desktop-manager.js';
 
 /**
@@ -132,6 +133,22 @@ function sanitizeLine(value: unknown, max: number): string {
 
 /** Minimal host identity a notification carries to its privacy authority. */
 export type NotificationSourceHostId = string | undefined;
+
+/**
+ * The Runtime Host that owns a finished run, derived from the session the
+ * renderer was reporting on (#4981). Desktop session keys embed their host;
+ * a legacy or malformed id has no resolvable owner, so this stays undefined
+ * and the banner is suppressed rather than being authorized by whichever
+ * host happens to be ready.
+ */
+export function resolveNotificationHostId(sessionId: unknown): NotificationSourceHostId {
+  if (typeof sessionId !== 'string' || !sessionId) return undefined;
+  try {
+    return parseDesktopSessionKey(sessionId).hostId || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Resolves whether the notification source host currently holds incognito.
