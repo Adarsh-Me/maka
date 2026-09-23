@@ -70,6 +70,7 @@
     "src/renderer/locales/settings-data-copy.ts",
     "src/renderer/locales/settings-external-agents-copy.ts",
     "src/renderer/locales/settings-health-copy.ts",
+    "src/renderer/locales/settings-jev-copy.ts",
     "src/renderer/locales/settings-memory-copy.ts",
     "src/renderer/locales/settings-navigation-copy.ts",
     "src/renderer/locales/settings-preferences-copy.ts",
@@ -1478,6 +1479,15 @@
         "actionFactories": [],
         "dependencyPaths": {}
       },
+      "src/renderer/locales/settings-jev-copy.ts": {
+        "bridgePaths": {},
+        "environmentCapabilities": {},
+        "hookCalls": {},
+        "lifecycleMethods": {},
+        "unresolvedDependencies": 0,
+        "actionFactories": [],
+        "dependencyPaths": {}
+      },
       "src/renderer/locales/settings-memory-copy.ts": {
         "bridgePaths": {},
         "environmentCapabilities": {},
@@ -2288,6 +2298,7 @@
         "unresolvedDependencies": 0,
         "actionFactories": [],
         "dependencyPaths": {
+          "../features/jev-settings": 1,
           "../features/network-proxy/index.js": 1,
           "../locales/settings-preferences-copy.js": 1,
           "../locales/settings-shared-copy.js": 1,
