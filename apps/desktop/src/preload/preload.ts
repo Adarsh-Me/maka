@@ -243,6 +243,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   McpTestResult,
+  OpencliChromeStatus,
 } from '@maka/core/mcp';
 import type { AttachmentRef, InlineReference, QuoteRef } from '@maka/core/events';
 import type { OnboardingMilestoneId } from '@maka/core/onboarding';
@@ -3259,6 +3260,12 @@ const makaBridge = {
     },
     logout(serverId: string, host?: DesktopRuntimeHostRef): Promise<McpServerStatus> {
       return invokeSelectedRuntimeHost(host, 'mcp:logout', serverId);
+    },
+    chromeStatus(host?: DesktopRuntimeHostRef): Promise<OpencliChromeStatus> {
+      return invokeSelectedRuntimeHost(host, 'mcp:chromeStatus');
+    },
+    connectChrome(host?: DesktopRuntimeHostRef): Promise<void> {
+      return invokeSelectedRuntimeHost(host, 'mcp:connectChrome');
     },
     subscribeChanges(handler: (statuses: McpServerStatus[]) => void): () => void {
       return subscribeActiveRuntimeHostEvent('mcp:changed', handler);

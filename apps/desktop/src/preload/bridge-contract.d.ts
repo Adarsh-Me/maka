@@ -252,6 +252,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   McpTestResult,
+  OpencliChromeStatus,
 } from '@maka/core/mcp';
 import type {
   AgentGraphClientSnapshot,
@@ -1605,6 +1606,8 @@ export interface MakaBridge {
     /** Ends an in-flight login round; resolves false when none is active. */
     cancelLogin(serverId: string, host?: DesktopRuntimeHostRef): Promise<boolean>;
     logout(serverId: string, host?: DesktopRuntimeHostRef): Promise<McpServerStatus>;
+    chromeStatus(host?: DesktopRuntimeHostRef): Promise<OpencliChromeStatus>;
+    connectChrome(host?: DesktopRuntimeHostRef): Promise<void>;
     subscribeChanges(handler: (statuses: McpServerStatus[]) => void): () => void;
   };
   externalAgents: {
