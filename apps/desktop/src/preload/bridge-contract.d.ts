@@ -327,6 +327,18 @@ export interface OnboardingSnapshot {
   sessionSendOutcomes: Record<string, import('@maka/core/session-send-projection').SessionSendProjection>;
 }
 
+export type DesktopOnboardingSessionUpdate =
+  | { kind: 'resync' }
+  | {
+      kind: 'delta';
+      sessionId: string;
+      outcome: import('@maka/core/session-send-projection').SessionSendProjection | null;
+      defaultHost?: {
+        state: OnboardingState;
+        milestones: OnboardingMilestone[];
+      };
+    };
+
 export interface DesktopTaskSubmissionReadinessRequest {
   connectionSlug?: string;
   model?: string;
@@ -1642,6 +1654,7 @@ export interface MakaBridge {
   };
   onboarding: {
     getSnapshot(): Promise<OnboardingSnapshot>;
+    getSessionUpdate(sessionId: string): Promise<DesktopOnboardingSessionUpdate | null>;
     setMilestone(
       id: OnboardingMilestoneId,
       status: 'completed' | 'skipped',
