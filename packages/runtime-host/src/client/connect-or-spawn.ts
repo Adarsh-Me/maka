@@ -459,7 +459,7 @@ export async function connectOrSpawnRuntimeHostWithDependencies(
         return result;
       }
       if (isPermanentCandidateStartupFailure(startupFailure) && pendingCandidateReports === 0) {
-        if (startupFailure.reason === 'launch_election_lost') {
+        if (isLaunchElectionLoss(startupFailure)) {
           // Losing the launch election is not a Host failure. It is proof that
           // another candidate holds this root and is still coming up, so the
           // only honest reading is "keep waiting for the one that won".
@@ -608,7 +608,7 @@ export async function connectOrSpawnRuntimeHostWithDependencies(
       await sleep(Math.min(remaining, Math.max(1, Math.round(backoffMs * jitter))), input.signal);
       backoffMs = Math.min(DEFAULT_BACKOFF_MAX_MS, backoffMs * 2);
     }
-    if (startupFailure) {
+    if (startupFailure && !isLaunchElectionLoss(startupFailure)) {
       const selectedFailure = startupFailure;
       electionSettled = true;
       await selectCandidateStartupDiagnostic(
@@ -634,6 +634,21 @@ export async function connectOrSpawnRuntimeHostWithDependencies(
   } finally {
     electionSettled = true;
   }
+}
+
+/**
+ * A Candidate that lost the launch election is evidence about *another*
+ * Candidate - it holds the root and is still coming up - so the loss must never
+ * decide how this election ends, whether the loop breaks on it or the window
+ * simply runs out. Failing on it made a slow first startup look like a
+ * permanently unavailable Host (issue #5843).
+ */
+function isLaunchElectionLoss(
+  failure: CandidateStartupFailureReport | undefined,
+): failure is CandidateStartupFailureReport & {
+  readonly reason: 'launch_election_lost';
+} {
+  return failure?.reason === 'launch_election_lost';
 }
 
 function recordElectionResult(
