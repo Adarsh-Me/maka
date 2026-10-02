@@ -459,13 +459,26 @@ export async function connectOrSpawnRuntimeHostWithDependencies(
         return result;
       }
       if (isPermanentCandidateStartupFailure(startupFailure) && pendingCandidateReports === 0) {
-        const selectedFailure = startupFailure;
-        electionSettled = true;
-        await selectCandidateStartupDiagnostic(
-          capability.rootId,
-          selectedFailure.startupAttemptId,
-        ).catch(() => undefined);
-        return { kind: 'failed', reason: selectedFailure.reason };
+        if (startupFailure.reason === 'launch_election_lost') {
+          // Losing the launch election is not a Host failure. It is proof that
+          // another candidate holds this root and is still coming up, so the
+          // only honest reading is "keep waiting for the one that won".
+          // Returning here is what made a slow first startup look permanently
+          // unavailable: the desktop saw a failure a second after it asked,
+          // while the candidate that owned the root was still loading its
+          // transcript store, and every retry looked the same (issue #5843).
+          // The loser's startup diagnostic stays on disk, because that trace is
+          // what made the storm visible at all; it is simply no longer terminal.
+          startupFailure = undefined;
+        } else {
+          const selectedFailure = startupFailure;
+          electionSettled = true;
+          await selectCandidateStartupDiagnostic(
+            capability.rootId,
+            selectedFailure.startupAttemptId,
+          ).catch(() => undefined);
+          return { kind: 'failed', reason: selectedFailure.reason };
+        }
       }
 
       const now = performance.now();
